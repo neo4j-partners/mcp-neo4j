@@ -49,6 +49,11 @@ def main():
         default=None,
         help="Default sample size for schema operations (default: 1000)",
     )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="API key for authentication (HTTP transport only)",
+    )
 
     args = parser.parse_args()
     config = process_config(args)

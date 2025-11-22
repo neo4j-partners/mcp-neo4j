@@ -9,14 +9,56 @@ from fastmcp.tools.tool import TextContent, ToolResult
 from mcp.types import ToolAnnotations
 from neo4j import AsyncDriver, AsyncGraphDatabase, Query, RoutingControl
 from neo4j.exceptions import ClientError, Neo4jError
-from pydantic import Field
+from pydantic import BaseModel, Field
 from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from .utils import _truncate_string_to_tokens, _value_sanitize
 
 logger = logging.getLogger("mcp_neo4j_cypher")
+
+
+class AuthConfig(BaseModel):
+    """Configuration for API key authentication."""
+
+    api_key: str
+
+
+class BearerAuthMiddleware(BaseHTTPMiddleware):
+    """Middleware for Bearer token authentication."""
+
+    def __init__(self, app, config: AuthConfig):
+        super().__init__(app)
+        self.config = config
+
+    async def dispatch(self, request: Request, call_next):
+        """Validate the Authorization header and allow or reject the request."""
+        auth_header = request.headers.get("Authorization")
+
+        if not auth_header:
+            return JSONResponse(
+                status_code=401, content={"error": "Missing Authorization header"}
+            )
+
+        if not auth_header.startswith("Bearer "):
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "error": "Invalid Authorization header format. Expected: Bearer <token>"
+                },
+            )
+
+        token = auth_header[7:]  # Remove "Bearer " prefix
+
+        if token != self.config.api_key:
+            return JSONResponse(status_code=401, content={"error": "Invalid API key"})
+
+        response = await call_next(request)
+        return response
 
 
 def _format_namespace(namespace: str) -> str:
@@ -32,7 +74,9 @@ def _format_namespace(namespace: str) -> str:
 def _is_write_query(query: str) -> bool:
     """Check if the query is a write query."""
     return (
-        re.search(r"\b(MERGE|CREATE|INSERT|SET|DELETE|REMOVE|ADD)\b", query, re.IGNORECASE)
+        re.search(
+            r"\b(MERGE|CREATE|INSERT|SET|DELETE|REMOVE|ADD)\b", query, re.IGNORECASE
+        )
         is not None
     )
 
@@ -63,7 +107,12 @@ def create_mcp_server(
             openWorldHint=True,
         ),
     )
-    async def get_neo4j_schema(sample_size: int = Field(default=config_sample_size, description="The sample size used to infer the graph schema. Larger samples are slower, but more accurate. Smaller samples are faster, but might miss information.")) -> list[ToolResult]:
+    async def get_neo4j_schema(
+        sample_size: int = Field(
+            default=config_sample_size,
+            description="The sample size used to infer the graph schema. Larger samples are slower, but more accurate. Smaller samples are faster, but might miss information.",
+        ),
+    ) -> list[ToolResult]:
         """
         Returns nodes, their properties (with types and indexed flags), and relationships
         using APOC's schema inspection.
@@ -79,7 +128,9 @@ def create_mcp_server(
         # Use provided sample_size, otherwise fall back to server default - 1000
         effective_sample_size = sample_size if sample_size else config_sample_size
 
-        logger.info(f"Running `get_neo4j_schema` with sample size {effective_sample_size}.")
+        logger.info(
+            f"Running `get_neo4j_schema` with sample size {effective_sample_size}."
+        )
 
         get_schema_query = f"CALL apoc.meta.schema({{sample: {effective_sample_size}}}) YIELD value RETURN value"
 
@@ -149,7 +200,7 @@ def create_mcp_server(
                 database_=database,
                 result_transformer_=lambda r: r.data(),
             )
-        
+
             logger.debug(f"Read query returned {len(results_json)} rows")
 
             schema_clean = clean_schema(results_json[0].get("value"))
@@ -286,7 +337,10 @@ async def main(
     read_timeout: int = 30,
     token_limit: Optional[int] = None,
     read_only: bool = False,
-    schema_sample_size: Optional[int] = None, # this is known as the config_sample_size in the create_mcp_server function
+    schema_sample_size: Optional[
+        int
+    ] = None,  # this is known as the config_sample_size in the create_mcp_server function
+    api_key: Optional[str] = None,
 ) -> None:
     logger.info("Starting MCP neo4j Server")
 
@@ -297,7 +351,9 @@ async def main(
             password,
         ),
     )
-    custom_middleware = [
+
+    # Base middleware for all HTTP-based transports
+    base_middleware = [
         Middleware(
             CORSMiddleware,
             allow_origins=allow_origins,
@@ -307,8 +363,21 @@ async def main(
         Middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts),
     ]
 
+    # HTTP transport middleware with optional authentication
+    http_middleware = base_middleware.copy()
+    if api_key:
+        auth_config = AuthConfig(api_key=api_key)
+        http_middleware.insert(0, Middleware(BearerAuthMiddleware, config=auth_config))
+        logger.info("API key authentication enabled for HTTP transport")
+
     mcp = create_mcp_server(
-        neo4j_driver, database, namespace, read_timeout, token_limit, read_only, schema_sample_size
+        neo4j_driver,
+        database,
+        namespace,
+        read_timeout,
+        token_limit,
+        read_only,
+        schema_sample_size,
     )
 
     # Run the server with the specified transport
@@ -318,7 +387,7 @@ async def main(
                 f"Running Neo4j Cypher MCP Server with HTTP transport on {host}:{port}..."
             )
             await mcp.run_http_async(
-                host=host, port=port, path=path, middleware=custom_middleware
+                host=host, port=port, path=path, middleware=http_middleware
             )
         case "stdio":
             logger.info("Running Neo4j Cypher MCP Server with stdio transport...")
@@ -331,7 +400,7 @@ async def main(
                 host=host,
                 port=port,
                 path=path,
-                middleware=custom_middleware,
+                middleware=base_middleware,
                 transport="sse",
             )
         case _:
