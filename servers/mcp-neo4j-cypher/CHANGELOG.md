@@ -1,11 +1,33 @@
 ## Next
 
 ### Fixed
-* Fix bug in Dockerfile where build would fail due to `LABEL` statement coming before `FROM` statement
+* Default `schema_sample_size` to `1000` when CLI and env are unset so `get_neo4j_schema` does not interpolate `{sample: None}`
 
 ### Changed
 
 ### Added
+
+## v0.6.0
+
+### Fixed
+* Fix startup `ImportError` caused by `pydocket` importing `FakeConnection` from `fakeredis>=2.27` — cap `fastmcp<2.14` to exclude the `pydocket` transitive dependency
+* Fix `TypeError: str expected, not int` in integration tests caused by `testcontainers` returning an `int` from `get_exposed_port()`
+
+### Changed
+* Update `_is_write_query` to use `EXPLAIN` query instead of regex check
+
+## v0.5.3
+
+### Changed
+* Security upgrade python from 3.12-slim to 3.13.8-slim
+* Update default MCP server endpoint from /api/mcp/ to /mcp/
+* Lock FastMCP version to <3.x
+
+## v0.5.2
+
+### Fixed
+* Fix bug in Dockerfile where build would fail due to `LABEL` statement coming before `FROM` statement
+* Removed `dependencies=...` from server constructor. This was removed from FastMCP.
 
 ## v0.5.1
 

@@ -315,16 +315,17 @@ def process_config(args: argparse.Namespace) -> dict[str, Union[str, int, None]]
                 logger.warning(
                     "Warning: Invalid sample size provided in NEO4J_SCHEMA_SAMPLE_SIZE environment variable. No default sample will be used."
                 )
-                config["schema_sample_size"] = 1000
+                config["schema_sample_size"] = None
         else:
             logger.info(
-                "Info: No default sample size provided. Schema operations will scan entire graph unless explicitly specified."
+                "Info: No sample size provided. Using default: 1000"
             )
             config["schema_sample_size"] = 1000
 
     # parse api key
-    if args.api_key is not None:
-        config["api_key"] = args.api_key
+    api_key = getattr(args, "api_key", None)
+    if api_key is not None:
+        config["api_key"] = api_key
         logger.info("Info: API key provided via command line argument.")
     else:
         if os.getenv("NEO4J_API_KEY") is not None:

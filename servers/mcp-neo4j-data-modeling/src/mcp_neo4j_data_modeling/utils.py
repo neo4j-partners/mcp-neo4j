@@ -11,6 +11,87 @@ logger = logging.getLogger(__name__)
 ALLOWED_TRANSPORTS = ["stdio", "http", "sse"]
 
 
+def convert_data_modeling_mcp_property_type_to_neo4j_graphrag_python_package_schema_property_type(
+    data_modeling_mcp_property_type: str,
+) -> str:
+    allowed_types = [
+        "BOOLEAN",
+        "DATE",
+        "DURATION",
+        "FLOAT",
+        "INTEGER",
+        "LIST",
+        "LOCAL_DATETIME",
+        "LOCAL_TIME",
+        "POINT",
+        "STRING",
+        "ZONED_DATETIME",
+        "ZONED_TIME",
+    ]
+
+    if data_modeling_mcp_property_type in allowed_types:
+        return data_modeling_mcp_property_type
+    else:
+        match data_modeling_mcp_property_type:
+            case "DATE":
+                return "ZONED_DATETIME"
+            case "DATETIME":
+                return "ZONED_DATETIME"
+            case "TIME":
+                return "ZONED_TIME"
+            case "LOCAL DATETIME":
+                return "LOCAL_DATETIME"
+            case "VECTOR":
+                return "LIST"  # vector not supported in Neo4j Graphrag Python Package Schema yet
+            case "ZONED DATETIME":
+                return "ZONED_DATETIME"
+            case "ZONED TIME":
+                return "ZONED_TIME"
+            case _:
+                return "STRING"
+
+
+def convert_neo4j_type_to_python_type(neo4j_type: str) -> str:
+    "Convert a Neo4j type to a Python type. Defaults to `str` if the type is not recognized."
+
+    match neo4j_type:
+        case "STRING":
+            return "str"
+        case "INTEGER":
+            return "int"
+        case "FLOAT":
+            return "float"
+        case "BOOLEAN":
+            return "bool"
+        case "DATE":
+            return "datetime"
+        case "DATETIME":
+            return "datetime"
+        case "TIME":
+            return "time"
+        case "DURATION":
+            return "timedelta"
+        case "LIST":
+            return "list"
+        case "LOCAL DATETIME":
+            return "datetime"
+        case "POINT":
+            return "tuple[float, float]"
+        case "VECTOR":
+            return "list[float]"
+        case "ZONED DATETIME":
+            return "datetime"
+        case "ZONED TIME":
+            return "datetime"
+        case _:
+            return "str"
+
+
+def convert_screaming_snake_case_to_pascal_case(screaming_snake_case: str) -> str:
+    "Convert a screaming snake case string to a Pascal case string."
+    return screaming_snake_case.replace("_", " ").title().replace(" ", "")
+
+
 def parse_dict_from_json_input(value: Union[str, dict]) -> dict:
     """
     Parse a dictionary from either a JSON string or a dictionary.
