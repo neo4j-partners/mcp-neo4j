@@ -77,8 +77,10 @@ async def _is_write_query(query: str, driver: AsyncDriver, database: str) -> boo
         query_=explain_query,
         database_=database,
     )
-    # query_type is 'r', 'w', 'rw', or 's'; anything containing 'w' is a write
-    return "w" in (summary.query_type or "")
+    # query_type is 'r', 'w', 'rw', or 's'; 'w' marks a data write and 's' a schema write
+    # (index or constraint), so anything containing either is rejected
+    query_type = summary.query_type or ""
+    return "w" in query_type or "s" in query_type
 
 
 def create_mcp_server(
@@ -196,7 +198,7 @@ def create_mcp_server(
         try:
             results_json = await neo4j_driver.execute_query(
                 get_schema_query,
-                routing_control=RoutingControl.READ,
+                routing_=RoutingControl.READ,
                 database_=database,
                 result_transformer_=lambda r: r.data(),
             )
@@ -250,7 +252,7 @@ def create_mcp_server(
             results = await neo4j_driver.execute_query(
                 query_obj,
                 parameters_=params,
-                routing_control=RoutingControl.READ,
+                routing_=RoutingControl.READ,
                 database_=database,
                 result_transformer_=lambda r: r.data(),
             )
@@ -299,7 +301,7 @@ def create_mcp_server(
             _, summary, _ = await neo4j_driver.execute_query(
                 query,
                 parameters_=params,
-                routing_control=RoutingControl.WRITE,
+                routing_=RoutingControl.WRITE,
                 database_=database,
             )
 
