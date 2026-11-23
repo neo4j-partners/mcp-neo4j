@@ -52,7 +52,7 @@ def main():
     parser.add_argument(
         "--api-key",
         default=None,
-        help="API key for authentication (HTTP transport only)",
+        help="API key for authentication (HTTP and SSE transports)",
     )
 
     args = parser.parse_args()

@@ -1,3 +1,4 @@
+import hmac
 import json
 import logging
 from typing import Any, Literal, Optional
@@ -53,7 +54,7 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
 
         token = auth_header[7:]  # Remove "Bearer " prefix
 
-        if token != self.config.api_key:
+        if not hmac.compare_digest(token.encode(), self.config.api_key.encode()):
             return JSONResponse(status_code=401, content={"error": "Invalid API key"})
 
         response = await call_next(request)
@@ -354,8 +355,8 @@ async def main(
         ),
     )
 
-    # Base middleware for all HTTP-based transports
-    base_middleware = [
+    # Middleware for all HTTP-based transports (http and sse)
+    middleware = [
         Middleware(
             CORSMiddleware,
             allow_origins=allow_origins,
@@ -365,12 +366,11 @@ async def main(
         Middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts),
     ]
 
-    # HTTP transport middleware with optional authentication
-    http_middleware = base_middleware.copy()
+    # Optional API key authentication
     if api_key:
         auth_config = AuthConfig(api_key=api_key)
-        http_middleware.insert(0, Middleware(BearerAuthMiddleware, config=auth_config))
-        logger.info("API key authentication enabled for HTTP transport")
+        middleware.insert(0, Middleware(BearerAuthMiddleware, config=auth_config))
+        logger.info("API key authentication enabled for HTTP and SSE transports")
 
     mcp = create_mcp_server(
         neo4j_driver,
@@ -389,7 +389,7 @@ async def main(
                 f"Running Neo4j Cypher MCP Server with HTTP transport on {host}:{port}..."
             )
             await mcp.run_http_async(
-                host=host, port=port, path=path, middleware=http_middleware
+                host=host, port=port, path=path, middleware=middleware
             )
         case "stdio":
             logger.info("Running Neo4j Cypher MCP Server with stdio transport...")
@@ -402,7 +402,7 @@ async def main(
                 host=host,
                 port=port,
                 path=path,
-                middleware=base_middleware,
+                middleware=middleware,
                 transport="sse",
             )
         case _:
